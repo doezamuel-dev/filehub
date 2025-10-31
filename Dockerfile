@@ -15,7 +15,8 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     curl \
-    && docker-php-ext-install pdo_mysql mbstring zip exif pcntl bcmath gd
+    libpq-dev \
+    && docker-php-ext-install pdo_pgsql pdo mbstring zip exif pcntl bcmath gd
 
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
