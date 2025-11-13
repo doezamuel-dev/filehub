@@ -1,37 +1,39 @@
 #!/bin/bash
 set -e
 
-# Wait for database to be ready (with timeout)
-echo "Waiting for database connection..."
-MAX_ATTEMPTS=30
-ATTEMPT=0
+echo "=== ENTRYPOINT START ==="
 
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-  if php artisan db:show &> /dev/null; then
-    echo "Database connection successful!"
-    break
-  fi
-  ATTEMPT=$((ATTEMPT + 1))
-  echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - Database not ready, waiting..."
-  sleep 2
+# Wait for Postgres
+echo "Waiting for Postgres at $DB_HOST:$DB_PORT..."
+
+for i in {1..30}; do
+    php -r "
+        try {
+            new PDO(
+                'pgsql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABASE}',
+                '${DB_USERNAME}',
+                '${DB_PASSWORD}',
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            );
+            echo 'DB OK';
+        } catch (Exception \$e) {
+            exit(1);
+        }
+    " && break
+
+    echo "  Attempt $i/30: database not ready"
+    sleep 2
 done
 
-if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
-  echo "Warning: Could not connect to database after $MAX_ATTEMPTS attempts"
-  echo "Continuing anyway - migrations can be run manually later"
-else
-  # Run migrations (safe to run multiple times)
-  echo "Running database migrations..."
-  php artisan migrate --force || echo "Migration failed or already up to date"
-fi
+echo "✓ Database is ready."
 
-# Clear and cache config
-echo "Caching configuration..."
+# Run migrations (safe)
+php artisan migrate --force || echo "Migrations already ran"
+
+# Cache
 php artisan config:cache || true
 php artisan route:cache || true
 php artisan view:cache || true
 
-# Start Apache
-echo "Starting Apache..."
+echo "=== STARTING APACHE ==="
 exec apache2-foreground
-

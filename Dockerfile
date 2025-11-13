@@ -17,7 +17,13 @@ COPY resources ./resources
 COPY public ./public
 
 # Build assets
-RUN npm run build
+RUN echo "=== Starting Vite build ===" && \
+    npm run build && \
+    echo "=== Vite build completed ===" && \
+    ls -la public/build/ && \
+    test -f public/build/manifest.json && \
+    echo "✓ Build successful - manifest.json exists" || \
+    (echo "✗ ERROR: Build failed or manifest.json missing!" && exit 1)
 
 # Stage 2: PHP application
 FROM php:8.2-apache
@@ -55,25 +61,40 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Copy application files
+# Copy application files (excluding public/build which we'll copy separately)
 COPY . .
+# Remove public/build if it exists from COPY . . (we want the built version)
+RUN rm -rf public/build
 
 # Copy built assets from assets stage
 COPY --from=assets /app/public/build ./public/build
 
+# Verify assets were copied and show contents
+RUN echo "=== Checking built assets in final image ===" && \
+    ls -la public/build/ 2>/dev/null || echo "WARNING: public/build directory does not exist!" && \
+    test -f public/build/manifest.json && \
+    echo "✓ manifest.json exists - Vite assets will be loaded" || \
+    (echo "✗ WARNING: manifest.json missing - using Tailwind CDN fallback" && \
+     echo "=== Listing public directory ===" && \
+     ls -la public/ || true) && \
+    echo "=== Asset check complete ==="
+
 # Install PHP dependencies (production only)
 RUN composer install --no-dev --no-interaction --optimize-autoloader
 
-# Set permissions
+# Set permissions (ensure build directory is readable)
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html \
+    && chmod -R 755 /var/www/html/public/build \
     && chmod -R 775 /var/www/html/storage \
     && chmod -R 775 /var/www/html/bootstrap/cache
 
 # Configure Apache
-RUN a2enmod rewrite headers
+RUN a2enmod rewrite headers && \
+    echo "ServerName localhost" >> /etc/apache2/apache2.conf
 COPY <<EOF /etc/apache2/sites-available/000-default.conf
 <VirtualHost *:80>
+    ServerName localhost
     ServerAdmin webmaster@localhost
     DocumentRoot /var/www/html/public
     

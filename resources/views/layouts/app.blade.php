@@ -12,10 +12,23 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         <!-- Scripts -->
-        @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+        @php
+            $manifestPath = public_path('build/manifest.json');
+            $hotPath = public_path('hot');
+            $hasViteAssets = file_exists($manifestPath) || file_exists($hotPath);
+        @endphp
+        @if ($hasViteAssets)
             @vite(['resources/css/app.css', 'resources/js/app.js'])
         @else
+            <!-- Tailwind CSS CDN Fallback -->
             <script src="https://cdn.tailwindcss.com"></script>
+            <script>
+                tailwind.config = {
+                    theme: {
+                        extend: {}
+                    }
+                }
+            </script>
         @endif
     </head>
     <body class="font-sans antialiased">
